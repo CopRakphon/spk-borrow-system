@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ระบบยืม–คืนอุปกรณ์ | โรงเรียนโซ่พิสัยพิทยาคม</title>
+<meta http-equiv="refresh" content="4;url=https://script.google.com/macros/s/AKfycbyowVlKllf9Fd12633qDsGFgZQlCfjlQYGb4UzLhw1wFgOhdneBxVKq7ahLw_6sGD7p/exec">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Prompt:wght@600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Sarabun',sans-serif;min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#E3F2FD,#BBDEFB 40%,#E1F5FE 70%,#EDE7F6);
+  padding:20px;overflow:hidden;position:relative}
+body::before,body::after{content:'';position:fixed;border-radius:50%;filter:blur(55px);opacity:.3;animation:fl 8s ease-in-out infinite}
+body::before{width:480px;height:480px;background:radial-gradient(#42A5F5,#1565C0);top:-140px;left:-140px}
+body::after{width:380px;height:380px;background:radial-gradient(#00BCD4,#0288D1);bottom:-100px;right:-100px;animation-delay:-4s}
+@keyframes fl{0%,100%{transform:translateY(0)}50%{transform:translateY(28px)}}
+.card{background:rgba(255,255,255,.76);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+  border:1.5px solid rgba(255,255,255,.58);border-radius:32px;
+  box-shadow:0 20px 60px rgba(21,101,192,.18);
+  padding:46px 42px 38px;text-align:center;max-width:500px;width:100%;
+  position:relative;z-index:1;animation:su .55s cubic-bezier(.4,0,.2,1)}
+@keyframes su{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
+.logo{width:86px;height:86px;object-fit:contain;filter:drop-shadow(0 4px 14px rgba(21,101,192,.28));margin-bottom:18px}
+.school{font-family:'Prompt',sans-serif;font-size:1.25rem;font-weight:700;color:#1565C0;line-height:1.3;margin-bottom:5px}
+.sys{font-size:.93rem;color:#5577aa;font-weight:500;margin-bottom:28px}
+.div{height:2px;background:linear-gradient(90deg,transparent,#42A5F5,transparent);border-radius:2px;margin-bottom:24px}
+.features{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-bottom:24px}
+.pill{background:rgba(21,101,192,.09);color:#1565C0;padding:4px 11px;border-radius:50px;font-size:.74rem;font-weight:600}
+.info{background:rgba(227,242,253,.6);border:1.5px solid rgba(66,165,245,.22);border-radius:14px;
+  padding:14px 18px;margin-bottom:22px;font-size:.88rem;color:#3a5080;line-height:1.7}
+.cnt{display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:20px;font-size:.86rem;color:#5577aa}
+.cnum{font-family:'Prompt',sans-serif;font-size:1.55rem;font-weight:700;color:#1565C0;
+  background:rgba(21,101,192,.08);width:44px;height:44px;border-radius:11px;
+  display:flex;align-items:center;justify-content:center}
+.pbar{height:5px;background:rgba(187,222,251,.5);border-radius:3px;margin-bottom:22px;overflow:hidden}
+.pfill{height:100%;background:linear-gradient(90deg,#1565C0,#00BCD4);border-radius:3px;animation:cd 4s linear forwards}
+@keyframes cd{from{width:100%}to{width:0%}}
+.btn-main{display:inline-flex;align-items:center;justify-content:center;gap:9px;width:100%;
+  padding:14px 24px;background:linear-gradient(135deg,#1565C0,#42A5F5);color:#fff;
+  font-family:'Prompt',sans-serif;font-size:.98rem;font-weight:600;border:none;border-radius:50px;
+  cursor:pointer;text-decoration:none;box-shadow:0 8px 22px rgba(21,101,192,.33);
+  position:relative;overflow:hidden;transition:transform .2s,box-shadow .2s;margin-bottom:11px}
+.btn-main::after{content:'';position:absolute;top:50%;left:-60%;width:40%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);
+  transform:translateY(-50%) skewX(-20deg);animation:sh 2.5s infinite}
+@keyframes sh{to{left:130%}}
+.btn-main:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(21,101,192,.4)}
+.btn-sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;
+  padding:11px 22px;background:#fff;color:#1565C0;font-family:'Sarabun',sans-serif;
+  font-size:.88rem;font-weight:600;border:2px solid rgba(66,165,245,.4);border-radius:50px;
+  cursor:pointer;text-decoration:none;transition:all .2s}
+.btn-sec:hover{background:#1565C0;color:#fff;border-color:#1565C0}
+.note{margin-top:18px;font-size:.73rem;color:#90a4c0;line-height:1.6}
+footer{margin-top:24px;font-size:.71rem;color:rgba(85,119,170,.7);text-align:center;position:relative;z-index:1}
+</style>
+</head>
+<body>
+<div class="card">
+  <img class="logo"
+       src="https://i.ibb.co/fVFc00vF/SPK-3-D-PNG-Remove-bg-removebg-preview.png"
+       alt="SPK" onerror="this.style.display='none'">
+  <div class="school">โรงเรียนโซ่พิสัยพิทยาคม</div>
+  <div class="sys">ระบบยืม–คืนอุปกรณ์ออนไลน์ | กลุ่มงานบริหารงานทั่วไป</div>
+  <div class="div"></div>
+  <div class="features">
+    <span class="pill">📊 Dashboard Real-time</span>
+    <span class="pill">🖼️ แคตตาล็อกพัสดุ</span>
+    <span class="pill">✍️ ลายเซ็นดิจิทัล</span>
+    <span class="pill">🖨️ พิมพ์ทะเบียน</span>
+    <span class="pill">📦 คลังพัสดุ</span>
+    <span class="pill">🔄 สร้าง Sheet อัตโนมัติ</span>
+  </div>
+  <div class="info">กำลังนำทางไปยังระบบอัตโนมัติใน <strong id="st">4</strong> วินาที…</div>
+  <div class="cnt">
+    <div class="cnum" id="cn">4</div>
+    <span>วินาที กำลังไป…</span>
+  </div>
+  <div class="pbar"><div class="pfill"></div></div>
+  <a class="btn-main"
+     href="https://script.google.com/macros/s/AKfycbyowVlKllf9Fd12633qDsGFgZQlCfjlQYGb4UzLhw1wFgOhdneBxVKq7ahLw_6sGD7p/exec">
+    🚀 เข้าสู่ระบบเลย
+  </a>
+  <a class="btn-sec" href="https://github.com/CopRakphon/spkborrowsystem" target="_blank" rel="noopener">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+    ดูซอร์สโค้ดบน GitHub
+  </a>
+  <div class="note">ⓘ GitHub Pages = หน้า Landing เท่านั้น<br>ระบบจริงรันบน Google Apps Script Server</div>
+</div>
+<footer>Copyright © 2026 กลุ่มงานบริหารงานทั่วไป โรงเรียนโซ่พิสัยพิทยาคม</footer>
+<script>
+  const GAS="https://script.google.com/macros/s/AKfycbyowVlKllf9Fd12633qDsGFgZQlCfjlQYGb4UzLhw1wFgOhdneBxVKq7ahLw_6sGD7p/exec";
+  let c=4;
+  const ti=setInterval(()=>{c--;document.getElementById("cn").textContent=c;document.getElementById("st").textContent=c;if(c<=0){clearInterval(ti);location.href=GAS;}},1000);
+</script>
+</body>
+</html>

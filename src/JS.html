@@ -1,0 +1,638 @@
+<script>
+/* ═══════════════════════════════════════════
+   JS.html v4.0 — SPK Borrow System 2026
+═══════════════════════════════════════════ */
+
+// ── State ─────────────────────────────────
+let stockData    = [];
+let txData       = [];
+let chartInst    = null;
+let borrowerType = "นักเรียน";
+let imageBase64  = "";
+let sigCanvas, sigCtx, isSigning = false;
+let timer        = null;
+let catUploadId  = "";
+
+// ── Loader ────────────────────────────────
+function showL(msg){
+  document.getElementById("loaderOverlay").style.display="flex";
+  document.getElementById("loaderTxt").textContent = msg||"กำลังโหลด...";
+}
+function hideL(){ document.getElementById("loaderOverlay").style.display="none"; }
+
+// ── Page Nav ──────────────────────────────
+function showPage(id){
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".nav-tab").forEach(t=>t.classList.remove("active"));
+  document.getElementById("page-"+id).classList.add("active");
+  document.getElementById("tab-"+id).classList.add("active");
+  clearInterval(timer);
+  if(id==="dashboard") startDash();
+  if(id==="catalog")   loadCatalog();
+  if(id==="borrow")    ensureStock();
+  if(id==="return")    startReturn();
+  if(id==="inventory") loadInv();
+  if(id==="history")   startHist();
+}
+
+// ── Init ──────────────────────────────────
+window.addEventListener("DOMContentLoaded",()=>{
+  initSig();
+  addBorrowItem();
+  showPage("dashboard");
+  document.getElementById("imgUpload").addEventListener("change",onImgUpload);
+  document.getElementById("catImgInput").addEventListener("change",onCatImgUpload);
+});
+
+// ══════════════════════════════════════════
+//  DASHBOARD
+// ══════════════════════════════════════════
+function startDash(){
+  loadDash();
+  timer=setInterval(loadDash,30000);
+}
+function loadDash(){
+  google.script.run
+    .withSuccessHandler(renderDash)
+    .withFailureHandler(errHandler)
+    .getDashboardStats();
+}
+function renderDash(s){
+  setText("st-total",    s.totalItems.toLocaleString());
+  setText("st-rem",      s.totalRemaining.toLocaleString());
+  setText("st-active",   s.activeBorrows.toLocaleString());
+  setText("st-types",    s.stockCount.toLocaleString());
+  setText("st-count",    s.totalBorrowCount.toLocaleString());
+  setText("dashTs","อัปเดต "+new Date(s.ts).toLocaleTimeString("th-TH"));
+
+  const ctx=document.getElementById("borrowChart").getContext("2d");
+  if(chartInst) chartInst.destroy();
+  chartInst=new Chart(ctx,{
+    type:"bar",
+    data:{
+      labels:s.topItems.map(x=>x.name),
+      datasets:[{
+        data:s.topItems.map(x=>x.count),
+        backgroundColor:s.topItems.map((_,i)=>`hsla(${210+i*12},72%,${55-i*2}%,.85)`),
+        borderRadius:8,borderSkipped:false
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{display:false},ticks:{font:{family:"Sarabun",size:10},maxRotation:35}},
+        y:{grid:{color:"rgba(187,222,251,.4)"},ticks:{font:{family:"Sarabun"}},beginAtZero:true}
+      }
+    }
+  });
+
+  const list=document.getElementById("overdueList");
+  list.innerHTML=s.overdueList.length
+    ?s.overdueList.map(r=>`
+        <div class="ov-row">
+          <div class="ov-name">👤 ${r.borrower} <span style="font-weight:400;color:#aaa">(${r.type})</span></div>
+          <div class="ov-det">
+            📦 ${r.itemName} &nbsp;|&nbsp; 🔢 <strong>${r.qty} ชิ้น</strong>
+            &nbsp;|&nbsp; 📅 ${r.borrowDate}
+            &nbsp;|&nbsp; ⏰ <strong style="color:var(--err)">${r.days} วัน</strong>
+          </div>
+        </div>`).join("")
+    :`<div style="text-align:center;color:#aaa;padding:20px;font-size:.86rem">✅ ไม่มีรายการค้างส่ง</div>`;
+}
+
+// ══════════════════════════════════════════
+//  BORROW
+// ══════════════════════════════════════════
+function setBorrowerType(type){
+  borrowerType=type;
+  document.querySelectorAll(".tgl-btn").forEach(b=>b.classList.toggle("active",b.dataset.type===type));
+  show("stdFields", type==="นักเรียน");
+  show("tchFields", type==="ครู/บุคลากร");
+}
+function ensureStock(cb){
+  if(stockData.length){if(cb)cb();return;}
+  showL("กำลังโหลดรายการพัสดุ...");
+  google.script.run
+    .withSuccessHandler(d=>{hideL();stockData=d;fillAllSelects();if(cb)cb();})
+    .withFailureHandler(e=>{hideL();errHandler(e);})
+    .getStockData();
+}
+function fillAllSelects(){
+  document.querySelectorAll(".item-sel").forEach(s=>fillSelect(s));
+}
+function fillSelect(sel){
+  const cur=sel.value;
+  sel.innerHTML='<option value="">-- เลือกอุปกรณ์ --</option>';
+  stockData.forEach(s=>{
+    const o=document.createElement("option");
+    o.value=s["ID"];
+    o.textContent=`${s["รายการ"]} (เหลือ: ${s["คงเหลือ"]})`;
+    o.dataset.rem=s["คงเหลือ"];
+    sel.appendChild(o);
+  });
+  if(cur) sel.value=cur;
+}
+function addBorrowItem(){
+  const wrap=document.getElementById("borrowItems");
+  const idx=Date.now();
+  const d=document.createElement("div");
+  d.className="irow";d.id="br-"+idx;
+  d.innerHTML=`
+    <div class="fg">
+      <label>อุปกรณ์</label>
+      <select class="item-sel" onchange="onItemSel(this,'${idx}')">
+        <option value="">-- เลือกอุปกรณ์ --</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label>จำนวน <span id="rem-${idx}" style="color:var(--a);font-size:.73rem"></span></label>
+      <input type="number" class="item-qty" min="1" value="1">
+    </div>
+    <button class="btn btn-er btn-ic" onclick="document.getElementById('br-${idx}').remove()" title="ลบ">✕</button>`;
+  wrap.appendChild(d);
+  if(stockData.length) fillSelect(d.querySelector(".item-sel"));
+}
+function onItemSel(sel,idx){
+  const rem=sel.options[sel.selectedIndex].dataset.rem;
+  const h=document.getElementById("rem-"+idx);
+  if(h) h.textContent=rem!==undefined?`(เหลือ ${rem})`:"";
+  const qi=sel.closest(".irow").querySelector(".item-qty");
+  if(qi&&rem!==undefined) qi.max=rem;
+}
+function onImgUpload(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{imageBase64=ev.target.result;
+    document.getElementById("imgPrev").src=imageBase64;
+    document.getElementById("imgPrev").style.display="block";};
+  r.readAsDataURL(f);
+}
+function trigUpload(){document.getElementById("imgUpload").click();}
+
+function initSig(){
+  sigCanvas=document.getElementById("signatureCanvas");
+  sigCtx=sigCanvas.getContext("2d");
+  const resize=()=>{
+    const rc=sigCanvas.getBoundingClientRect();
+    sigCanvas.width=rc.width||460;sigCanvas.height=145;
+    sigCtx.strokeStyle="#1565C0";sigCtx.lineWidth=2.5;
+    sigCtx.lineCap="round";sigCtx.lineJoin="round";
+  };
+  resize();window.addEventListener("resize",resize);
+  const gp=e=>{const rc=sigCanvas.getBoundingClientRect(),s=e.touches?e.touches[0]:e;
+    return{x:s.clientX-rc.left,y:s.clientY-rc.top}};
+  sigCanvas.addEventListener("mousedown", e=>{isSigning=true;const p=gp(e);sigCtx.beginPath();sigCtx.moveTo(p.x,p.y)});
+  sigCanvas.addEventListener("mousemove", e=>{if(!isSigning)return;const p=gp(e);sigCtx.lineTo(p.x,p.y);sigCtx.stroke()});
+  sigCanvas.addEventListener("mouseup",   ()=>isSigning=false);
+  sigCanvas.addEventListener("mouseleave",()=>isSigning=false);
+  sigCanvas.addEventListener("touchstart",e=>{e.preventDefault();isSigning=true;const p=gp(e);sigCtx.beginPath();sigCtx.moveTo(p.x,p.y)},{passive:false});
+  sigCanvas.addEventListener("touchmove", e=>{e.preventDefault();if(!isSigning)return;const p=gp(e);sigCtx.lineTo(p.x,p.y);sigCtx.stroke()},{passive:false});
+  sigCanvas.addEventListener("touchend",  ()=>isSigning=false);
+}
+function clearSig(){sigCtx.clearRect(0,0,sigCanvas.width,sigCanvas.height);}
+function sigEmpty(){return !sigCtx.getImageData(0,0,sigCanvas.width,sigCanvas.height).data.some(x=>x!==0);}
+
+async function submitBorrow(){
+  const name=val("borrowerName");
+  const idCode=borrowerType==="นักเรียน"
+    ?(val("studentId")+(val("roomNo")?" ห้อง:"+val("roomNo"):""))
+    :(val("teacherPos")+(val("teacherDept")?" / "+val("teacherDept"):""));
+  if(!name||!idCode.trim()) return sw("กรุณากรอกข้อมูลผู้ยืมให้ครบ");
+
+  const rows=document.querySelectorAll("#borrowItems .irow");
+  if(!rows.length) return sw("กรุณาเพิ่มอุปกรณ์อย่างน้อย 1 รายการ");
+  const items=[];
+  for(const row of rows){
+    const sel=row.querySelector(".item-sel"),qty=row.querySelector(".item-qty");
+    if(!sel.value) return sw("กรุณาเลือกอุปกรณ์ทุกรายการ");
+    if(!qty.value||Number(qty.value)<1) return sw("กรุณาระบุจำนวนที่ถูกต้อง");
+    items.push({itemId:sel.value,qty:Number(qty.value)});
+  }
+  if(sigEmpty()){
+    const c=await Swal.fire({icon:"question",title:"ยังไม่มีลายเซ็น",
+      showCancelButton:true,confirmButtonText:"ดำเนินการต่อ",cancelButtonText:"ยกเลิก",confirmButtonColor:"#1565C0"});
+    if(!c.isConfirmed) return;
+  }
+  const sig=sigEmpty()?"":sigCanvas.toDataURL("image/png");
+  showL("กำลังบันทึกการยืม...");
+  google.script.run
+    .withSuccessHandler(res=>{
+      hideL();
+      if(res.success){
+        Swal.fire({icon:"success",title:"บันทึกสำเร็จ!",
+          html:`<b>TransID:</b> <code>${res.transId}</code><br><small>จดหมายเลขนี้ไว้เพื่อใช้คืน</small>`,
+          confirmButtonColor:"#1565C0"});
+        resetBorrow();stockData=[];
+      } else Swal.fire({icon:"error",title:"เกิดข้อผิดพลาด",text:res.error,confirmButtonColor:"#1565C0"});
+    })
+    .withFailureHandler(e=>{hideL();errHandler(e);})
+    .submitBorrow({borrowerType,borrowerName:name,borrowerId:idCode.trim(),
+      items,imageBase64,signatureBase64:sig});
+}
+function resetBorrow(){
+  ["borrowerName","studentId","teacherPos","teacherDept","roomNo"].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.value="";});
+  document.getElementById("borrowItems").innerHTML="";
+  addBorrowItem();clearSig();
+  imageBase64="";
+  const p=document.getElementById("imgPrev");p.style.display="none";p.src="";
+}
+
+// ══════════════════════════════════════════
+//  CATALOG
+// ══════════════════════════════════════════
+function loadCatalog(){
+  showL("กำลังโหลดแคตตาล็อก...");
+  google.script.run
+    .withSuccessHandler(d=>{hideL();stockData=d;renderCatalog(d);})
+    .withFailureHandler(e=>{hideL();errHandler(e);})
+    .getStockData();
+}
+function renderCatalog(data){
+  const q=(val("catSearch")||"").toLowerCase();
+  const cat=val("catFilter");
+  let filtered=data;
+  if(q) filtered=filtered.filter(r=>(r["รายการ"]+r["หมวดหมู่"]).toLowerCase().includes(q));
+  if(cat) filtered=filtered.filter(r=>r["หมวดหมู่"]===cat);
+
+  // update filter dropdown
+  const cats=[...new Set(data.map(r=>r["หมวดหมู่"]).filter(Boolean))];
+  const cf=document.getElementById("catFilter");
+  const cv=cf.value;
+  cf.innerHTML='<option value="">ทุกหมวดหมู่</option>'+cats.map(c=>`<option value="${c}">${c}</option>`).join("");
+  cf.value=cv;
+
+  const grid=document.getElementById("catGrid");
+  if(!filtered.length){
+    grid.innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:40px;color:#aaa">ไม่พบรายการ</div>`;
+    return;
+  }
+  grid.innerHTML=filtered.map(r=>{
+    const tot=Number(r["ทั้งหมด"])||1;
+    const rem=Number(r["คงเหลือ"])||0;
+    const pct=Math.round((rem/tot)*100);
+    const bc=rem<1?"var(--err)":rem<(tot*.25)?"var(--warn)":"var(--ok)";
+    const cc=rem<1?"c-no":rem<(tot*.25)?"c-lo":"c-ok";
+    const img=r["รูปภาพURL"]||"";
+    return `
+      <div class="card cat-card" onclick="catDetail('${r["ID"]}')">
+        <div class="cat-img-wrap">
+          ${img?`<img class="cat-img" src="${img}" alt="${r["รายการ"]}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:""}
+          <div class="cat-ph" style="${img?"display:none":"display:flex"}">📦<small>ยังไม่มีรูป</small></div>
+          ${r["หมวดหมู่"]?`<div class="cat-chip">${r["หมวดหมู่"]}</div>`:""}
+          <button class="cat-upbtn" onclick="event.stopPropagation();trigCatUpload('${r["ID"]}')" title="เปลี่ยนรูป">📷</button>
+          <div class="cat-bar"><div class="cat-fill" style="width:${pct}%;background:${bc}"></div></div>
+        </div>
+        <div class="cat-body">
+          <div class="cat-name">${r["รายการ"]}</div>
+          <div class="cat-asset">${r["หมายเลขครุภัณฑ์"]||"ไม่มีหมายเลข"}</div>
+          <div class="cat-srow">
+            <span class="cat-slbl">คงเหลือ / ทั้งหมด</span>
+            <span class="cat-snum ${cc}">${rem}<span style="font-size:.73rem;font-weight:400;color:#aaa"> / ${tot}</span></span>
+          </div>
+          <div class="cat-acts">
+            <button class="cat-btn cb-borrow" onclick="event.stopPropagation();borrowFromCat('${r["ID"]}')"
+              ${rem<1?"disabled style='opacity:.5;cursor:not-allowed'":""}>
+              ${rem<1?"❌ หมด":"📤 ยืม"}
+            </button>
+            <button class="cat-btn cb-edit" onclick="event.stopPropagation();openEditModal('${r["ID"]}');showPage('inventory')">✏️</button>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+}
+function catDetail(id){
+  const r=stockData.find(x=>String(x["ID"])===String(id));if(!r)return;
+  const rem=Number(r["คงเหลือ"])||0;
+  Swal.fire({title:r["รายการ"],
+    html:`
+      ${r["รูปภาพURL"]?`<img src="${r["รูปภาพURL"]}" style="max-width:100%;max-height:190px;border-radius:12px;margin-bottom:12px;object-fit:contain" onerror="this.style.display='none'">`:
+        '<div style="font-size:4rem;margin:10px 0">📦</div>'}
+      <table style="width:100%;text-align:left;font-size:.86rem;border-collapse:collapse">
+        <tr><td style="padding:5px 8px;color:#888">รหัส</td><td><code>${r["ID"]}</code></td></tr>
+        <tr><td style="padding:5px 8px;color:#888">หมายเลขครุภัณฑ์</td><td>${r["หมายเลขครุภัณฑ์"]||"-"}</td></tr>
+        <tr><td style="padding:5px 8px;color:#888">หมวดหมู่</td><td>${r["หมวดหมู่"]||"-"}</td></tr>
+        <tr><td style="padding:5px 8px;color:#888">ทั้งหมด</td><td>${r["ทั้งหมด"]}</td></tr>
+        <tr><td style="padding:5px 8px;color:#888">คงเหลือ</td><td><strong style="color:${rem<1?"var(--err)":rem<3?"var(--warn)":"var(--ok)"}">${rem}</strong></td></tr>
+        <tr><td style="padding:5px 8px;color:#888">หมายเหตุ</td><td>${r["หมายเหตุ"]||"-"}</td></tr>
+      </table>`,
+    showCancelButton:rem>0,
+    confirmButtonText:rem>0?"📤 ยืมเลย":"✕ ปิด",
+    cancelButtonText:"ปิด",confirmButtonColor:"#1565C0"
+  }).then(res=>{if(res.isConfirmed&&rem>0) borrowFromCat(id);});
+}
+function borrowFromCat(id){
+  showPage("borrow");
+  ensureStock(()=>{
+    const sel=document.querySelector("#borrowItems .item-sel");
+    if(sel){sel.value=id;onItemSel(sel,"auto");}
+  });
+}
+function trigCatUpload(id){catUploadId=id;document.getElementById("catImgInput").click();}
+function onCatImgUpload(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    showL("กำลังอัปโหลดรูปพัสดุ...");
+    google.script.run
+      .withSuccessHandler(res=>{
+        hideL();
+        if(res.success){
+          const item=stockData.find(x=>String(x["ID"])===String(catUploadId));
+          if(item) item["รูปภาพURL"]=res.url;
+          renderCatalog(stockData);
+          Swal.fire({icon:"success",title:"อัปโหลดรูปสำเร็จ!",timer:1400,showConfirmButton:false});
+        } else Swal.fire({icon:"error",title:res.error,confirmButtonColor:"#1565C0"});
+      })
+      .withFailureHandler(e=>{hideL();errHandler(e);})
+      .uploadCatalogImage(catUploadId,ev.target.result);
+  };
+  r.readAsDataURL(f);
+  e.target.value="";
+}
+
+// ══════════════════════════════════════════
+//  RETURN
+// ══════════════════════════════════════════
+function startReturn(){
+  loadReturn();
+  timer=setInterval(loadReturn,20000);
+}
+function loadReturn(){
+  setText("retTs","⏳ กำลังโหลด...");
+  google.script.run
+    .withSuccessHandler(rows=>{renderReturn(rows);setText("retTs","✅ "+new Date().toLocaleTimeString("th-TH"));})
+    .withFailureHandler(()=>setText("retTs","⚠️ โหลดไม่สำเร็จ"))
+    .getPendingTransactions();
+}
+function renderReturn(rows){
+  document.getElementById("retBody").innerHTML=rows.length
+    ?rows.map(r=>`
+        <tr>
+          <td><code style="font-size:.72rem">${r.transId}</code></td>
+          <td>${r.type}</td>
+          <td><strong>${r.borrower}</strong><br><small style="color:#aaa">${r.code}</small></td>
+          <td>${r.itemName}</td>
+          <td>${r.assetNo||"-"}</td>
+          <td>${r.borrowDate}</td>
+          <td style="text-align:center"><strong>${r.borrowed}</strong></td>
+          <td><span class="badge ${r.status==="คืนบางส่วน"?"b-part":"b-act"}">${r.status}</span></td>
+          <td>
+            <div style="display:flex;gap:5px;align-items:center">
+              <input type="number" class="ret-qty" id="rq-${r.transId}-${r.itemId}"
+                min="1" max="${r.canReturn}" value="${r.canReturn}">
+              <button class="btn btn-ok btn-sm" onclick="doReturn('${r.transId}','${r.itemId}','${r.itemName}')">✅ คืน</button>
+            </div>
+          </td>
+        </tr>`).join("")
+    :`<tr><td colspan="9" style="text-align:center;color:var(--ok);padding:24px">✅ ไม่มีรายการรอคืน</td></tr>`;
+}
+async function doReturn(transId,itemId,name){
+  const el=document.getElementById(`rq-${transId}-${itemId}`);
+  const qty=el?Number(el.value):1;
+  if(!qty||qty<1) return sw("กรุณาระบุจำนวนที่คืน");
+  const {value:pw}=await Swal.fire({
+    title:"🔐 รหัสผ่านผู้ดูแล",
+    html:`<p style="color:#666;font-size:.87rem;margin-bottom:8px">คืน <b>${name}</b> จำนวน <b>${qty}</b> ชิ้น</p>`,
+    input:"password",inputPlaceholder:"รหัสผ่าน",
+    showCancelButton:true,confirmButtonText:"ยืนยัน",cancelButtonText:"ยกเลิก",confirmButtonColor:"#1565C0"
+  });
+  if(!pw) return;
+  showL("กำลังบันทึกการคืน...");
+  google.script.run
+    .withSuccessHandler(res=>{
+      hideL();
+      if(res.success){
+        Swal.fire({icon:"success",title:"บันทึกการคืนสำเร็จ!",text:`สถานะ: ${res.status}`,timer:1800,showConfirmButton:false});
+        loadReturn();stockData=[];
+      } else Swal.fire({icon:"error",title:"ไม่สำเร็จ",text:res.error,confirmButtonColor:"#1565C0"});
+    })
+    .withFailureHandler(e=>{hideL();errHandler(e);})
+    .submitReturn({transId,itemId,returnQty:qty,adminPass:pw});
+}
+
+// ══════════════════════════════════════════
+//  INVENTORY
+// ══════════════════════════════════════════
+function loadInv(){
+  showL("กำลังโหลดคลังพัสดุ...");
+  google.script.run
+    .withSuccessHandler(d=>{hideL();stockData=d;renderInv(d);})
+    .withFailureHandler(e=>{hideL();errHandler(e);})
+    .getStockData();
+}
+function renderInv(data){
+  const q=(val("invSearch")||"").toLowerCase();
+  const f=q?data.filter(r=>(r["รายการ"]+r["หมวดหมู่"]+r["หมายเลขครุภัณฑ์"]).toLowerCase().includes(q)):data;
+  document.getElementById("invBody").innerHTML=f.map(r=>`
+    <tr>
+      <td>
+        ${r["รูปภาพURL"]
+          ?`<img src="${r["รูปภาพURL"]}" style="width:38px;height:38px;object-fit:cover;border-radius:8px" onerror="this.outerHTML='📦'">`
+          :`<span style="font-size:1.3rem">📦</span>`}
+      </td>
+      <td><code style="font-size:.75rem">${r["ID"]}</code></td>
+      <td><strong>${r["รายการ"]}</strong></td>
+      <td>${r["หมายเลขครุภัณฑ์"]||"-"}</td>
+      <td>${r["หมวดหมู่"]||"-"}</td>
+      <td style="text-align:center">${r["ทั้งหมด"]}</td>
+      <td style="text-align:center">
+        <span style="color:${Number(r["คงเหลือ"])<1?"var(--err)":Number(r["คงเหลือ"])<3?"var(--warn)":"var(--ok)"};font-weight:700">
+          ${r["คงเหลือ"]}
+        </span>
+      </td>
+      <td>${r["หมายเหตุ"]||""}</td>
+      <td>
+        <button class="btn btn-ol btn-sm" onclick="openEditModal('${r["ID"]}')">✏️</button>
+        <button class="btn btn-er btn-sm" onclick="delItem('${r["ID"]}')" style="margin-left:3px">🗑️</button>
+      </td>
+    </tr>`).join("")||`<tr><td colspan="9" style="text-align:center;color:#aaa;padding:20px">ไม่พบข้อมูล</td></tr>`;
+}
+function openAddModal(){
+  setText("modalTitle","➕ เพิ่มพัสดุใหม่");
+  ["editId","editName","editAsset","editCat","editTotal","editRem","editRemark","editImgUrl"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+  document.getElementById("editRemGrp").style.display="none";
+  document.getElementById("editImgPrev").style.display="none";
+  document.getElementById("itemModal").style.display="flex";
+}
+function openEditModal(id){
+  const r=stockData.find(x=>String(x["ID"])===String(id));if(!r)return;
+  setText("modalTitle","✏️ แก้ไขพัสดุ");
+  setVal("editId",r["ID"]);setVal("editName",r["รายการ"]);
+  setVal("editAsset",r["หมายเลขครุภัณฑ์"]||"");setVal("editCat",r["หมวดหมู่"]||"");
+  setVal("editTotal",r["ทั้งหมด"]);setVal("editRem",r["คงเหลือ"]);
+  setVal("editRemark",r["หมายเหตุ"]||"");setVal("editImgUrl",r["รูปภาพURL"]||"");
+  document.getElementById("editRemGrp").style.display="flex";
+  const p=document.getElementById("editImgPrev");
+  if(r["รูปภาพURL"]){p.src=r["รูปภาพURL"];p.style.display="block";}else p.style.display="none";
+  document.getElementById("itemModal").style.display="flex";
+}
+function closeModal(){document.getElementById("itemModal").style.display="none";}
+function onEditImgUrl(){
+  const u=val("editImgUrl");const p=document.getElementById("editImgPrev");
+  if(u){p.src=u;p.style.display="block";}else p.style.display="none";
+}
+function saveItem(){
+  const id=val("editId");
+  const payload={id,name:val("editName"),assetNo:val("editAsset"),
+    category:val("editCat"),total:val("editTotal"),
+    remaining:val("editRem")||val("editTotal"),
+    remark:val("editRemark"),imageUrl:val("editImgUrl")};
+  if(!payload.name||!payload.total) return sw("กรุณากรอกชื่อรายการและจำนวน");
+  showL("กำลังบันทึก...");
+  const fn=id?"updateStockItem":"addStockItem";
+  google.script.run
+    .withSuccessHandler(res=>{
+      hideL();closeModal();
+      if(res.success){loadInv();stockData=[];Swal.fire({icon:"success",title:"บันทึกสำเร็จ!",timer:1400,showConfirmButton:false});}
+      else Swal.fire({icon:"error",title:res.error,confirmButtonColor:"#1565C0"});
+    })
+    .withFailureHandler(e=>{hideL();errHandler(e);})[fn](payload);
+}
+async function delItem(id){
+  const r=stockData.find(x=>String(x["ID"])===String(id));
+  const {isConfirmed}=await Swal.fire({icon:"warning",title:"ยืนยันการลบ?",
+    html:`ลบ <b>${r?r["รายการ"]:id}</b>`,
+    showCancelButton:true,confirmButtonText:"ลบ",cancelButtonText:"ยกเลิก",confirmButtonColor:"#E53935"});
+  if(!isConfirmed)return;
+  const {value:pw}=await Swal.fire({title:"รหัสผ่านผู้ดูแล",input:"password",
+    showCancelButton:true,confirmButtonText:"ยืนยัน",confirmButtonColor:"#1565C0"});
+  if(pw!=="12345") return Swal.fire({icon:"error",title:"รหัสผ่านไม่ถูกต้อง",confirmButtonColor:"#1565C0"});
+  showL("กำลังลบ...");
+  google.script.run
+    .withSuccessHandler(res=>{
+      hideL();
+      if(res.success){loadInv();stockData=[];Swal.fire({icon:"success",title:"ลบสำเร็จ!",timer:1200,showConfirmButton:false});}
+      else Swal.fire({icon:"error",title:res.error,confirmButtonColor:"#1565C0"});
+    })
+    .withFailureHandler(e=>{hideL();errHandler(e);})
+    .deleteStockItem(id);
+}
+
+// ══════════════════════════════════════════
+//  HISTORY
+// ══════════════════════════════════════════
+function startHist(){loadHist();timer=setInterval(loadHist,25000);}
+function loadHist(){
+  setText("histTs","⏳ กำลังโหลด...");
+  google.script.run
+    .withSuccessHandler(data=>{txData=data;renderHist(data);setText("histTs","✅ "+new Date().toLocaleTimeString("th-TH"));})
+    .withFailureHandler(()=>setText("histTs","⚠️ โหลดไม่สำเร็จ"))
+    .getTransactionData();
+}
+function renderHist(data){
+  const q=(val("histSearch")||"").toLowerCase();
+  const f=val("histFilter");
+  let rows=[...data].reverse();
+  if(q) rows=rows.filter(r=>(r["ชื่อผู้ยืม"]+r["TransID"]+r["IDอุปกรณ์"]).toLowerCase().includes(q));
+  if(f) rows=rows.filter(r=>r["สถานะ"]===f);
+  document.getElementById("histBody").innerHTML=rows.map(r=>`
+    <tr>
+      <td><code style="font-size:.71rem">${r["TransID"]||""}</code></td>
+      <td>${r["ประเภทผู้ยืม"]||""}</td>
+      <td>${r["ชื่อผู้ยืม"]||""}</td>
+      <td>${r["รหัสประจำตัว/ห้อง/สังกัด"]||""}</td>
+      <td>${r["IDอุปกรณ์"]||""}</td>
+      <td style="text-align:center">${r["จำนวนที่ยืม"]||0}</td>
+      <td style="text-align:center">${r["จำนวนที่คืน"]||0}</td>
+      <td>${r["วันที่ยืม"]||""}</td>
+      <td>${r["วันที่คืน"]||"-"}</td>
+      <td><span class="badge ${r["สถานะ"]==="คืนแล้ว"?"b-done":r["สถานะ"]==="คืนบางส่วน"?"b-part":"b-act"}">${r["สถานะ"]||""}</span></td>
+      <td><button class="btn btn-ol btn-sm" onclick="openPrintModal('${r["TransID"]}')">🖨️</button></td>
+    </tr>`).join("")||`<tr><td colspan="11" style="text-align:center;color:#aaa;padding:20px">ไม่พบข้อมูล</td></tr>`;
+}
+
+// ══════════════════════════════════════════
+//  PRINT
+// ══════════════════════════════════════════
+function openPrintModal(tid){
+  document.getElementById("printModal").style.display="flex";
+  setText("pmTitle",tid?"TransID: "+tid:"ทะเบียนทั้งหมด");
+  setVal("printFilter",tid||"all");
+}
+function closePrintModal(){document.getElementById("printModal").style.display="none";}
+function openPrintAll(){openPrintModal("");}
+function doPrint(){
+  const f=val("printFilter");
+  closePrintModal();showL("กำลังเตรียมเอกสาร...");
+  google.script.run
+    .withSuccessHandler(rows=>{
+      hideL();
+      if(!rows.length) return Swal.fire({icon:"info",title:"ไม่พบข้อมูล",confirmButtonColor:"#1565C0"});
+      buildPrint(rows);
+      setTimeout(()=>window.print(),350);
+      setTimeout(()=>{
+        const pa=document.getElementById("printArea");
+        pa.style.display="none";pa.classList.remove("show");
+      },2000);
+    })
+    .withFailureHandler(e=>{hideL();errHandler(e);})
+    .getRegisterData(f);
+}
+function buildPrint(rows){
+  const today=new Date().toLocaleDateString("th-TH",{year:"numeric",month:"long",day:"numeric"});
+  const beYear=new Date().getFullYear()+543;
+  const sigs=[...new Set(rows.filter(r=>r.signatureUrl).map(r=>r.signatureUrl))];
+  const trs=rows.map(r=>`
+    <tr>
+      <td>${r.no}</td><td class="l">${r.itemName}</td><td>${r.assetNo}</td>
+      <td>${r.qty}</td><td>${r.borrowDate}</td><td class="l">${r.borrower}</td>
+      <td>${r.returnDate!=="-"?r.returnDate:""}</td>
+      <td class="l">${r.returner!=="-"?r.returner:""}</td><td></td>
+    </tr>`).join("");
+  const sigBox=sigs.length
+    ?sigs.map(u=>`<img class="pr-sig-img" src="${u}" onerror="this.style.display='none'">`).join("")
+    :'<div style="height:55px"></div>';
+  const pa=document.getElementById("printArea");
+  pa.innerHTML=`
+    <div class="pr-header">
+      <img class="pr-logo" src="https://i.ibb.co/fVFc00vF/SPK-3-D-PNG-Remove-bg-removebg-preview.png"
+           alt="logo" onerror="this.style.display='none'">
+      <div class="pr-school">โรงเรียนโซ่พิสัยพิทยาคม</div>
+      <div class="pr-title">ทะเบียนคุมการยืมใช้พัสดุ</div>
+      <div class="pr-year">ประจำปีงบประมาณ ${beYear}</div>
+      <div style="font-size:9pt;color:#555;margin-top:3px">พิมพ์วันที่: ${today}</div>
+    </div>
+    <table class="pr-table">
+      <thead>
+        <tr>
+          <th rowspan="2" style="width:5%">ลำดับที่</th>
+          <th rowspan="2" style="width:22%">รายการ</th>
+          <th rowspan="2" style="width:16%">หมายเลขหรือรหัส</th>
+          <th rowspan="2" style="width:7%">จำนวน</th>
+          <th colspan="2" style="width:22%">ยืม</th>
+          <th colspan="2" style="width:22%">คืน</th>
+          <th rowspan="2" style="width:6%">หมายเหตุ</th>
+        </tr>
+        <tr><th>วันที่ยืม</th><th>ชื่อผู้ยืม</th><th>วันที่คืน</th><th>ชื่อผู้คืน</th></tr>
+      </thead>
+      <tbody>${trs}</tbody>
+    </table>
+    <div class="pr-sigs">
+      <div class="pr-sig">
+        ${sigBox}
+        <div class="pr-sig-line">
+          ลงชื่อ .................................................. ผู้ยืม<br>
+          <span style="font-size:9.5pt">(${rows[0]?rows[0].borrower:""})</span>
+        </div>
+      </div>
+      <div class="pr-sig">
+        <div style="height:55px"></div>
+        <div class="pr-sig-line">
+          ลงชื่อ .................................................. ผู้ควบคุมพัสดุ<br>
+          <span style="font-size:9.5pt">(กลุ่มงานบริหารงานทั่วไป)</span>
+        </div>
+      </div>
+    </div>`;
+  pa.style.display="block";pa.classList.add("show");
+}
+
+// ── Utils ──────────────────────────────────
+function sw(msg){return Swal.fire({icon:"warning",title:msg,confirmButtonColor:"#1565C0"});}
+function errHandler(e){hideL();Swal.fire({icon:"error",title:"เกิดข้อผิดพลาด",text:e.message||String(e),confirmButtonColor:"#1565C0"});}
+function val(id){const el=document.getElementById(id);return el?el.value:"";}
+function setVal(id,v){const el=document.getElementById(id);if(el)el.value=v;}
+function setText(id,t){const el=document.getElementById(id);if(el)el.textContent=t;}
+function show(id,vis){const el=document.getElementById(id);if(el)el.style.display=vis?"grid":"none";}
+</script>

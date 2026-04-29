@@ -1,0 +1,13 @@
+{
+  "name": "spk-borrow-system",
+  "version": "4.0.0",
+  "scripts": {
+    "push":   "clasp push",
+    "deploy": "clasp deploy --description \"Deploy $(date)\"",
+    "open":   "clasp open",
+    "logs":   "clasp logs --watch",
+    "status": "clasp deployments",
+    "setup":  "clasp open --addon"
+  },
+  "devDependencies": { "@google/clasp": "^2.4.2" }
+}

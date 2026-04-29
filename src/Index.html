@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ระบบยืม–คืนอุปกรณ์ | โรงเรียนโซ่พิสัยพิทยาคม</title>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Prompt:wght@400;600;700&display=swap" rel="stylesheet">
+<?!= include("CSS"); ?>
+</head>
+<body>
+
+<!-- Loader -->
+<div id="loaderOverlay" class="loader">
+  <div class="lspinner"></div>
+  <div id="loaderTxt" class="ltxt">กำลังโหลด...</div>
+</div>
+
+<!-- Print area -->
+<div id="printArea"></div>
+
+<!-- Hidden inputs -->
+<input id="imgUpload"   type="file" accept="image/*" style="display:none">
+<input id="catImgInput" type="file" accept="image/*" style="display:none">
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<header class="app-header">
+  <div class="header-brand">
+    <img class="header-logo"
+         src="https://i.ibb.co/fVFc00vF/SPK-3-D-PNG-Remove-bg-removebg-preview.png"
+         alt="SPK" onerror="this.style.display='none'">
+    <div>
+      <div class="header-title">ระบบยืม–คืนอุปกรณ์</div>
+      <div class="header-sub">โรงเรียนโซ่พิสัยพิทยาคม</div>
+    </div>
+  </div>
+  <nav class="nav-tabs">
+    <button id="tab-dashboard" class="nav-tab" onclick="showPage('dashboard')">📊 Dashboard</button>
+    <button id="tab-catalog"   class="nav-tab" onclick="showPage('catalog')">🖼️ แคตตาล็อก</button>
+    <button id="tab-borrow"    class="nav-tab" onclick="showPage('borrow')">📤 ยืม</button>
+    <button id="tab-return"    class="nav-tab" onclick="showPage('return')">📥 คืน</button>
+    <button id="tab-inventory" class="nav-tab" onclick="showPage('inventory')">📦 คลัง</button>
+    <button id="tab-history"   class="nav-tab" onclick="showPage('history')">📋 ประวัติ</button>
+  </nav>
+</header>
+
+<main class="app-main">
+
+<!-- ═══════════════ DASHBOARD ═══════════════ -->
+<section id="page-dashboard" class="page">
+  <div class="stat-grid">
+    <div class="card stat-card s-blue">
+      <div class="sicon">📦</div>
+      <div><div class="sval" id="st-total">–</div><div class="slbl">พัสดุทั้งหมด (ชิ้น)</div></div>
+    </div>
+    <div class="card stat-card s-cyan">
+      <div class="sicon">✅</div>
+      <div><div class="sval" id="st-rem">–</div><div class="slbl">คงเหลือในคลัง</div></div>
+    </div>
+    <div class="card stat-card s-orange">
+      <div class="sicon">📤</div>
+      <div><div class="sval" id="st-active">–</div><div class="slbl">รายการกำลังยืม</div></div>
+    </div>
+    <div class="card stat-card s-green">
+      <div class="sicon">🗂️</div>
+      <div><div class="sval" id="st-types">–</div><div class="slbl">ประเภทพัสดุ</div></div>
+    </div>
+    <div class="card stat-card s-purple">
+      <div class="sicon">🔢</div>
+      <div><div class="sval" id="st-count">–</div><div class="slbl">ครั้งที่มายืมทั้งหมด</div></div>
+    </div>
+  </div>
+
+  <div class="bento">
+    <div class="card chart-wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="sec-title" style="margin:0">📈 Top 10 อุปกรณ์ที่ถูกยืมบ่อย</div>
+        <span id="dashTs" style="font-size:.68rem;color:#aaa"></span>
+      </div>
+      <div style="height:265px"><canvas id="borrowChart"></canvas></div>
+    </div>
+    <div class="card overdue-wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:11px">
+        <div class="sec-title" style="margin:0">🔴 รายการค้างส่ง (&gt;7 วัน)</div>
+        <div class="rt"><span class="rt-dot"></span>Real-time</div>
+      </div>
+      <div id="overdueList"><div style="text-align:center;color:#bbb;padding:20px">กำลังโหลด...</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ CATALOG ═══════════════ -->
+<section id="page-catalog" class="page">
+  <div class="card fsec">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:9px">
+      <div class="ftitle" style="margin:0">🖼️ แคตตาล็อกพัสดุ</div>
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+        <div class="rt"><span class="rt-dot"></span>คลิกการ์ดเพื่อดูรายละเอียด</div>
+        <button class="btn btn-ol btn-sm" onclick="loadCatalog()">🔄</button>
+        <button class="btn btn-p btn-sm" onclick="showPage('inventory');openAddModal()">➕ เพิ่มพัสดุ</button>
+      </div>
+    </div>
+    <div class="sbar">
+      <input id="catSearch" class="sinput" placeholder="🔍 ค้นหาชื่อพัสดุ..." oninput="renderCatalog(stockData)">
+      <select id="catFilter" style="border-radius:50px;padding:8px 13px;border:1.5px solid #BBDEFB;background:rgba(255,255,255,.85);font-family:var(--f);font-size:.83rem" onchange="renderCatalog(stockData)">
+        <option value="">ทุกหมวดหมู่</option>
+      </select>
+    </div>
+    <div id="catGrid" class="cat-grid">
+      <div style="grid-column:1/-1;text-align:center;padding:40px;color:#bbb">กำลังโหลด...</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ BORROW ═══════════════ -->
+<section id="page-borrow" class="page">
+  <div class="card fsec">
+    <div class="ftitle">📤 แบบฟอร์มยืมอุปกรณ์</div>
+    <div class="tgl">
+      <button class="tgl-btn active" data-type="นักเรียน" onclick="setBorrowerType('นักเรียน')">🧑‍🎓 นักเรียน</button>
+      <button class="tgl-btn" data-type="ครู/บุคลากร" onclick="setBorrowerType('ครู/บุคลากร')">👨‍🏫 ครู/บุคลากร</button>
+    </div>
+    <div class="fgrid">
+      <div class="fg">
+        <label>ชื่อ–สกุลผู้ยืม *</label>
+        <input id="borrowerName" type="text" placeholder="ชื่อ นามสกุล">
+      </div>
+      <div id="stdFields" style="display:grid;grid-template-columns:1fr 1fr;gap:13px">
+        <div class="fg"><label>รหัสนักเรียน *</label><input id="studentId" type="text" placeholder="เช่น 30101"></div>
+        <div class="fg"><label>ห้อง/ชั้น</label><input id="roomNo" type="text" placeholder="เช่น ม.3/2"></div>
+      </div>
+      <div id="tchFields" style="display:none;grid-template-columns:1fr 1fr;gap:13px">
+        <div class="fg"><label>ตำแหน่ง *</label><input id="teacherPos" type="text" placeholder="เช่น ครูชำนาญการพิเศษ"></div>
+        <div class="fg"><label>กลุ่มสาระ/งาน</label><input id="teacherDept" type="text" placeholder="เช่น คณิตศาสตร์"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:17px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px">
+        <div class="ftitle" style="font-size:.9rem;margin:0">📋 รายการอุปกรณ์</div>
+        <button class="btn btn-ol btn-sm" onclick="addBorrowItem()">➕ เพิ่มรายการ</button>
+      </div>
+      <div id="borrowItems"></div>
+    </div>
+
+    <div style="margin-top:17px">
+      <label style="display:block;margin-bottom:5px">📷 รูปภาพอุปกรณ์ (ไม่บังคับ)</label>
+      <div class="up-area" onclick="trigUpload()">
+        <div style="color:#aaa;font-size:.85rem">📁 คลิกเพื่อเลือกรูป</div>
+        <img id="imgPrev" class="up-prev" style="display:none" alt="preview">
+      </div>
+    </div>
+
+    <div style="margin-top:17px">
+      <label style="display:block;margin-bottom:5px">✍️ ลายเซ็นผู้ยืม</label>
+      <div class="sig-wrap">
+        <canvas id="signatureCanvas" style="width:100%;height:145px;display:block"></canvas>
+      </div>
+      <div style="display:flex;gap:7px;margin-top:7px">
+        <button class="btn btn-ol btn-sm" onclick="clearSig()">🗑️ ล้างลายเซ็น</button>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:9px">
+      <button class="btn btn-ol" onclick="resetBorrow()">↩️ รีเซ็ต</button>
+      <button class="btn btn-p" onclick="submitBorrow()">💾 บันทึกการยืม</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ RETURN ═══════════════ -->
+<section id="page-return" class="page">
+  <div class="card fsec">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px;flex-wrap:wrap;gap:9px">
+      <div class="ftitle" style="margin:0">📥 รายการรอคืนอุปกรณ์</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span id="retTs" style="font-size:.73rem;color:#aaa"></span>
+        <div class="rt"><span class="rt-dot"></span>อัปเดตอัตโนมัติ 20 วิ</div>
+        <button class="btn btn-ol btn-sm" onclick="loadReturn()">🔄</button>
+      </div>
+    </div>
+    <p style="font-size:.81rem;color:#5577aa;background:rgba(227,242,253,.6);padding:9px 13px;border-radius:11px;margin-bottom:13px">
+      ℹ️ ทุกคนเห็นรายการได้ — กดปุ่ม <strong>✅ คืน</strong> ต้องใส่รหัสผ่านผู้ดูแล
+    </p>
+    <div class="twrap">
+      <table>
+        <thead>
+          <tr><th>TransID</th><th>ประเภท</th><th>ผู้ยืม</th><th>อุปกรณ์</th>
+              <th>หมายเลขครุภัณฑ์</th><th>วันที่ยืม</th><th>ยืม</th><th>สถานะ</th><th>คืน / ดำเนินการ</th></tr>
+        </thead>
+        <tbody id="retBody">
+          <tr><td colspan="9" style="text-align:center;color:#bbb;padding:24px">กำลังโหลด...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ INVENTORY ═══════════════ -->
+<section id="page-inventory" class="page">
+  <div class="card fsec">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px;flex-wrap:wrap;gap:9px">
+      <div class="ftitle" style="margin:0">📦 คลังพัสดุ</div>
+      <div style="display:flex;gap:7px">
+        <button class="btn btn-ol btn-sm" onclick="loadInv()">🔄</button>
+        <button class="btn btn-p btn-sm" onclick="openAddModal()">➕ เพิ่มพัสดุ</button>
+      </div>
+    </div>
+    <div class="sbar">
+      <input id="invSearch" class="sinput" placeholder="🔍 ค้นหา..." oninput="renderInv(stockData)">
+    </div>
+    <div class="twrap">
+      <table>
+        <thead>
+          <tr><th>รูป</th><th>ID</th><th>รายการ</th><th>หมายเลขครุภัณฑ์</th>
+              <th>หมวดหมู่</th><th>ทั้งหมด</th><th>คงเหลือ</th><th>หมายเหตุ</th><th>จัดการ</th></tr>
+        </thead>
+        <tbody id="invBody">
+          <tr><td colspan="9" style="text-align:center;padding:24px;color:#bbb">กำลังโหลด...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ HISTORY ═══════════════ -->
+<section id="page-history" class="page">
+  <div class="card fsec">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:9px">
+      <div class="ftitle" style="margin:0">📋 ประวัติการยืม–คืน</div>
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <span id="histTs" style="font-size:.72rem;color:#aaa"></span>
+        <div class="rt"><span class="rt-dot"></span>25 วิ</div>
+        <button class="btn btn-ol btn-sm" onclick="loadHist()">🔄</button>
+        <button class="btn btn-p btn-sm" onclick="openPrintAll()">🖨️ พิมพ์ทะเบียน</button>
+      </div>
+    </div>
+    <div class="sbar">
+      <input id="histSearch" class="sinput" placeholder="🔍 ค้นหา TransID, ชื่อ..." oninput="renderHist(txData)">
+      <select id="histFilter" style="border-radius:50px;padding:8px 13px;border:1.5px solid #BBDEFB;background:rgba(255,255,255,.85);font-family:var(--f);font-size:.82rem" onchange="renderHist(txData)">
+        <option value="">ทุกสถานะ</option>
+        <option value="ยืมอยู่">ยืมอยู่</option>
+        <option value="คืนบางส่วน">คืนบางส่วน</option>
+        <option value="คืนแล้ว">คืนแล้ว</option>
+      </select>
+    </div>
+    <div class="twrap">
+      <table>
+        <thead>
+          <tr><th>TransID</th><th>ประเภท</th><th>ชื่อผู้ยืม</th><th>รหัส/ห้อง</th>
+              <th>อุปกรณ์</th><th>ยืม</th><th>คืน</th><th>วันยืม</th>
+              <th>วันคืน</th><th>สถานะ</th><th>พิมพ์</th></tr>
+        </thead>
+        <tbody id="histBody">
+          <tr><td colspan="11" style="text-align:center;padding:24px;color:#bbb">กำลังโหลด...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ═══ Modal: Add/Edit Item ═══ -->
+<div id="itemModal" class="modal-ov">
+  <div class="card modal-box">
+    <div class="ftitle" id="modalTitle">เพิ่ม/แก้ไขพัสดุ</div>
+    <input type="hidden" id="editId">
+    <div class="fgrid">
+      <div class="fg full"><label>ชื่อรายการ *</label><input id="editName" type="text" placeholder="เช่น โต๊ะประชุม"></div>
+      <div class="fg"><label>หมายเลขครุภัณฑ์</label><input id="editAsset" type="text" placeholder="เช่น 6810-001-0001/65"></div>
+      <div class="fg"><label>หมวดหมู่</label><input id="editCat" type="text" placeholder="เช่น เครื่องใช้สำนักงาน"></div>
+      <div class="fg"><label>จำนวนทั้งหมด *</label><input id="editTotal" type="number" min="0" placeholder="0"></div>
+      <div class="fg" id="editRemGrp"><label>คงเหลือ</label><input id="editRem" type="number" min="0" placeholder="0"></div>
+      <div class="fg full"><label>หมายเหตุ</label><textarea id="editRemark" rows="2" placeholder="หมายเหตุ..."></textarea></div>
+      <div class="fg full">
+        <label>🖼️ URL รูปภาพ (สำหรับแคตตาล็อก)</label>
+        <input id="editImgUrl" type="url" placeholder="https://... หรือ Google Drive URL" oninput="onEditImgUrl()">
+        <img id="editImgPrev" style="display:none;max-height:90px;margin-top:7px;border-radius:9px;object-fit:contain" alt="" onerror="this.style.display='none'">
+        <small style="color:#90CAF9;font-size:.73rem">💡 อัปโหลดรูปจากหน้าแคตตาล็อกได้ (ปุ่ม 📷)</small>
+      </div>
+    </div>
+    <div style="display:flex;gap:9px;justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-ol" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-p" onclick="saveItem()">💾 บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Modal: Print Options ═══ -->
+<div id="printModal" class="modal-ov">
+  <div class="card" style="width:min(420px,95vw);padding:22px">
+    <div class="ftitle">🖨️ พิมพ์ทะเบียนคุมการยืม</div>
+    <div id="pmTitle" style="font-size:.81rem;color:#666;margin-bottom:13px"></div>
+    <div class="fg" style="margin-bottom:15px">
+      <label>ขอบเขตการพิมพ์</label>
+      <select id="printFilter" style="border-radius:13px;padding:9px 12px;border:1.5px solid #BBDEFB;background:#fff;font-family:var(--f)">
+        <option value="all">ทั้งหมด</option>
+        <option value="pending">เฉพาะที่ยังไม่คืน</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:9px;justify-content:flex-end">
+      <button class="btn btn-ol" onclick="closePrintModal()">ยกเลิก</button>
+      <button class="btn btn-p" onclick="doPrint()">🖨️ พิมพ์เลย</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Footer ═══ -->
+<footer class="app-footer">
+  Copyright © 2026 ระบบยืม–คืนอุปกรณ์ออนไลน์ | กลุ่มงานบริหารงานทั่วไป โรงเรียนโซ่พิสัยพิทยาคม
+</footer>
+
+<?!= include("JS"); ?>
+</body>
+</html>
